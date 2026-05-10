@@ -45,14 +45,24 @@ def aggregate(
     # STUDENT: Replace or extend the aggregation below.
     # ------------------------------------------------------------------
 
-    # Default: last real token of the final transformer layer.
-    layer = hidden_states[-1]          # (seq_len, hidden_dim)
-
-    # Find the index of the last real (non-padding) token.
+    # Use a compact multi-layer summary.  Hallucination signals are often not
+    # isolated in the final layer, so we concatenate several late-layer views.
     real_positions = attention_mask.nonzero(as_tuple=False)  # (n_real, 1)
     last_pos = int(real_positions[-1].item())                 # scalar index
 
-    feature = layer[last_pos]          # (hidden_dim,)
+    pieces = []
+    for layer_idx in (-1, -2, -4, -8):
+        layer = hidden_states[layer_idx]  # (seq_len, hidden_dim)
+
+        last_token = layer[last_pos]
+        full_mean = layer[: last_pos + 1].mean(dim=0)
+
+        tail_start = max(0, last_pos - 31)
+        tail_mean = layer[tail_start : last_pos + 1].mean(dim=0)
+
+        pieces.extend([last_token, full_mean, tail_mean])
+
+    feature = torch.cat(pieces, dim=0)
 
     return feature
     # ------------------------------------------------------------------
